@@ -1,5 +1,4 @@
   MODULE critpoint_mod
-    USE omp_lib
     USE kind_mod
     USE matrix_mod
     USE bader_mod
@@ -7,7 +6,6 @@
     USE chgcar_mod
     USE charge_mod 
     USE options_mod
-    USE ions_mod
     USE io_mod
     USE ions_mod
     USE weight_mod

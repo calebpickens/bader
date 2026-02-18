@@ -4,6 +4,7 @@
 !-----------------------------------------------------------------------------------!
   MODULE options_mod
     USE kind_mod , ONLY : q2
+    USE omp_lib
     IMPLICIT NONE
 
     TYPE :: options_obj
@@ -564,6 +565,19 @@
             opts%refchgfile = inc(1:it)
           END IF
 
+        ! Thread count (Added for parallelization)
+        ELSEIF (p(1:ip) == '-threads') THEN
+          m=m+1
+          CALL GET_COMMAND_ARGUMENT(m,inc)
+          inc = ADJUSTL(inc)
+          it = LEN_TRIM(inc)
+
+          IF (inc(1:it) == 'MAX' .OR. inc(1:it) == 'max') THEN
+            opts%thread_count = omp_get_max_threads()
+          ELSE
+            READ(inc,*) opts%thread_count
+          END IF
+
         ! Unknown flag
         ELSE
           WRITE(*,'(A,A,A)') ' Unknown option flag "',p(1:ip),'"'
@@ -629,6 +643,7 @@
       WRITE(*,*) '         [ -p atom_index | bader_index ]'
       WRITE(*,*) '         [ -p surfaces_atoms ]'
       WRITE(*,*) '         [ -i cube | chgcar ]'
+      WRITE(*,*) '         [ -threads thread_count ]'
       WRITE(*,*) '         [ -h ] [ -v ]'
       WRITE(*,*) '         chargefile'
       WRITE(*,*) ''
@@ -715,6 +730,10 @@
       WRITE(*,*) '        Input charge density file type.  If not specified, the'
       WRITE(*,*) '        program will try to determine the charge density file type'
       WRITE(*,*) '        automatically.'
+      WRITE(*,*) ''
+      WRITE(*,*) '   -threads < thread_count | max >'
+      WRITE(*,*) '        Set the number of threads for parallel execution.'
+      WRITE(*,*) '        "max" will use all available cores. Default is 1.'
       WRITE(*,*) ''
       WRITE(*,*) '   -h'
       WRITE(*,*) '        Help.'
