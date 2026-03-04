@@ -139,7 +139,6 @@
     
   END SUBROUTINE FilterDuplicateCandidates
 
-
   ! Thread-local proximity filtering and merging version
   SUBROUTINE GetCPCL_Spatial(bdr, chg, cpl, cpcl, opts, cptnum)
 
@@ -153,7 +152,6 @@
     INTEGER :: cptnum
     INTEGER, PARAMETER :: MAX_CANDIDATES_PER_THREAD = 100000
     INTEGER :: num_threads, thread_id, i, j, k, n1, n2, n3
-    INTEGER :: n1_start, n1_end, n1_chunk
     INTEGER :: thread_count_local
     INTEGER, ALLOCATABLE :: thread_counts(:)
     TYPE(cpc), ALLOCATABLE, DIMENSION(:,:) :: thread_cpcl_all
@@ -162,31 +160,23 @@
     REAL(q2), DIMENSION(3,3) :: hessianMatrix
     REAL(q2), DIMENSION(3) :: tem, trueR, grad
     INTEGER, DIMENSION(3) :: p
-    LOGICAL :: should_add
 
-    ! --- Setup ---
     num_threads = opts%thread_count
     ALLOCATE(thread_cpcl_all(MAX_CANDIDATES_PER_THREAD, num_threads))
     ALLOCATE(thread_counts(num_threads))
     thread_counts = 0
     cptnum = 0
 
-    PRINT *, "Starting GetCPCL_Spatial2 with", num_threads, "threads"
+    PRINT *, "Starting GetCPCL_Spatial with", num_threads, "threads"
 
-    !$OMP PARALLEL PRIVATE(thread_id, thread_cpcl, thread_count_local, n1, n2, n3, n1_start, n1_end, n1_chunk, p, trueR, tem, grad, i, should_add)
+    !$OMP PARALLEL NUM_THREADS(num_threads) DEFAULT(SHARED) &
+    !$OMP PRIVATE(thread_id, thread_cpcl, thread_count_local, n1, n2, n3, p, trueR, tem, grad, i, hessianMatrix)
       thread_id = omp_get_thread_num() + 1
       ALLOCATE(thread_cpcl(MAX_CANDIDATES_PER_THREAD))
       thread_count_local = 0
 
-      n1_chunk = chg%npts(1) / num_threads
-      n1_start = (thread_id - 1) * n1_chunk + 1
-      IF (thread_id == num_threads) THEN
-        n1_end = chg%npts(1)
-      ELSE
-        n1_end = thread_id * n1_chunk
-      END IF
-
-      DO n1 = n1_start, n1_end
+      !$OMP DO SCHEDULE(DYNAMIC)
+      DO n1 = 1, chg%npts(1)
         DO n2 = 1, chg%npts(2)
           DO n3 = 1, chg%npts(3)
             IF (bdr%volnum(n1,n2,n3) == bdr%bnum + 1) CYCLE
@@ -201,14 +191,13 @@
                   thread_cpcl(thread_count_local)%grad = grad
                   thread_cpcl(thread_count_local)%hasProxy = .FALSE.
                   thread_cpcl(thread_count_local)%r = tem
-                ELSE
-                  PRINT *, "WARNING: Thread", thread_id, "exceeded MAX_CANDIDATES_PER_THREAD. Skipping further candidates."
                 END IF
               END IF
             END IF
           END DO
         END DO
       END DO
+      !$OMP END DO
 
       thread_counts(thread_id) = thread_count_local
       DO i = 1, thread_count_local
@@ -228,32 +217,19 @@
       END DO
     END DO
     
-    
     CALL FilterDuplicateCandidates(cpcl, cptnum, opts)
     CALL RemoveGaps(cpcl, cptnum)
+
     ALLOCATE(cpclt(cptnum))
-    DO i = 1, cptnum
-      cpclt(i) = cpcl(i)
-    END DO
+    cpclt = cpcl
     DEALLOCATE(cpcl)
     ALLOCATE(cpcl(cptnum))
-    DO i = 1, cptnum
-      cpcl(i)=cpclt(i)
-    END DO
+    cpcl = cpclt
     DEALLOCATE(cpclt)
 
-    PRINT *, "Final candidate count: ", cptnum
-    ALLOCATE(cpclt(SIZE(cpcl)))
-    DO i = 1, SIZE(cpl)
-      cpclt(i) = cpl(i)
-    END DO
-    DEALLOCATE(cpl)
-    ALLOCATE(cpl(SIZE(cpclt)))
-    DO i = 1, SIZE(cpclt)
-      cpl(i)=cpclt(i)
-    END DO
-    DEALLOCATE(cpclt)
-
+    IF (ALLOCATED(cpl)) DEALLOCATE(cpl)
+    ALLOCATE(cpl(cptnum))
+    cpl = cpcl
 
     DEALLOCATE(thread_cpcl_all)
     DEALLOCATE(thread_counts)
@@ -771,6 +747,7 @@
           CALL GetCPCL(bdr,chg,cpl,cpcl,opts,cptnum)
         ELSE
           CALL GetCPCL_Spatial(bdr,chg,cpl,cpcl,opts,cptnum)
+        END IF
           
         IF (cptnum > 100000) THEN
           stat = 0
